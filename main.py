@@ -88,21 +88,37 @@ def montar_mensagem(ioepa, pncp, pref):
 def executar():
     print("🚀 Robô iniciado...")
 
+    horarios_execucao = [8, 10, 13, 16, 17]
+    horarios_executados = set()
+
     while True:
         agora = datetime.now(brasil)
+        hora = agora.hour
+        minuto = agora.minute
 
-        print(f"⏰ Rodando agora: {agora.strftime('%H:%M:%S')}")
+        horario_str = f"{hora}:{minuto}"
 
-        ioepa = buscar_ioepa()
-        pncp = buscar_pncp()
-        pref = buscar_prefeituras()
+        # roda apenas nos horários definidos (minuto 0)
+        if hora in horarios_execucao and minuto == 0:
+            if horario_str not in horarios_executados:
+                print(f"⏰ Executando {hora}:00")
 
-        msg = montar_mensagem(ioepa, pncp, pref)
-        enviar(msg)
+                ioepa = buscar_ioepa()
+                pncp = buscar_pncp()
+                pref = buscar_prefeituras()
 
-        print("✅ Mensagem enviada\n")
+                msg = montar_mensagem(ioepa, pncp, pref)
+                enviar(msg)
 
-        time.sleep(60)  # roda a cada 1 minuto
+                print("✅ Mensagem enviada\n")
+
+                horarios_executados.add(horario_str)
+
+        # limpa controle todo dia meia noite
+        if hora == 0 and minuto == 0:
+            horarios_executados.clear()
+
+        time.sleep(30)
 
 # START
 executar()
