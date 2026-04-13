@@ -6,8 +6,8 @@ import time
 import threading
 
 # 🔐 TELEGRAM
-TOKEN = "SEU_TOKEN_AQUI"
-CHAT_ID = "SEU_CHAT_ID_AQUI"
+TOKEN = "8749489427:AAGph4ZejogI1viJZf29Q75f_33YOzVxSwM"
+CHAT_ID = "8373941356"
 
 def enviar(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
