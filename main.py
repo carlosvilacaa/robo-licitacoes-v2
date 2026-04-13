@@ -140,7 +140,7 @@ def montar_top(ioepa):
 🚀 Chance: {ioepa['chance']}
 """
 
-# ================= EXECUÇÃO =================
+# ================= LOOP AUTOMÁTICO =================
 
 def loop_principal():
     print("🚀 Robô automático iniciado")
@@ -202,8 +202,9 @@ def escutar_comandos():
 
             ioepa = buscar_ioepa()
 
-            if texto in ["/relat", "/teste"]:
-    enviar(montar_mensagem(ioepa, 0, []))
+            # 🔥 AQUI ESTÁ A MUDANÇA
+            if texto in ["/teste", "/relat"]:
+                enviar(montar_mensagem(ioepa, 0, []))
 
             elif texto == "/status":
                 enviar("✅ Robô online e funcionando")
