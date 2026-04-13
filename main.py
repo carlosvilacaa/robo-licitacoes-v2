@@ -202,8 +202,8 @@ def escutar_comandos():
 
             ioepa = buscar_ioepa()
 
-            if texto == "/teste":
-                enviar(montar_mensagem(ioepa, 0, []))
+            if texto in ["/relat", "/teste"]:
+    enviar(montar_mensagem(ioepa, 0, []))
 
             elif texto == "/status":
                 enviar("✅ Robô online e funcionando")
