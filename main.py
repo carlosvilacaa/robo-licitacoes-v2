@@ -3,7 +3,6 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pytz
 import time
-import json
 
 # 🔐 TELEGRAM
 TOKEN = "8749489427:AAGph4ZejogI1viJZf29Q75f_33YOzVxSwM"
@@ -16,6 +15,42 @@ def enviar(msg):
 # 🌎 HORÁRIO BRASIL
 brasil = pytz.timezone("America/Sao_Paulo")
 
+# ================= INTELIGÊNCIA =================
+
+def analisar_noticia(texto):
+    texto = texto.lower()
+    score = 0
+
+    if "pavimentação" in texto: score += 3
+    if "asfalto" in texto: score += 3
+    if "drenagem" in texto: score += 3
+    if "infraestrutura" in texto: score += 2
+    if "recapeamento" in texto: score += 3
+    if "licitação" in texto: score += 5
+    if "convênio" in texto: score += 2
+
+    cidades = [
+        "parauapebas", "marabá", "belém",
+        "altamira", "santarém", "redenção",
+        "castanhal", "ananindeua"
+    ]
+
+    cidade_detectada = None
+
+    for c in cidades:
+        if c in texto:
+            score += 2
+            cidade_detectada = c.title()
+
+    if score >= 8:
+        chance = "🔥 Alta"
+    elif score >= 4:
+        chance = "⚠️ Média"
+    else:
+        chance = "Baixa"
+
+    return score, chance, cidade_detectada
+
 # ================= IOEPA =================
 
 def buscar_ioepa():
@@ -26,33 +61,25 @@ def buscar_ioepa():
         resp = requests.get(url, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        textos = soup.get_text().lower()
+        texto = soup.get_text().lower()
 
-        palavras = [
-            "asfalto",
-            "pavimentação",
-            "drenagem",
-            "infraestrutura",
-            "recapeamento",
-            "tapa buraco"
-        ]
+        score, chance, cidade = analisar_noticia(texto)
 
-        encontrados = []
-        for p in palavras:
-            if p in textos:
-                encontrados.append(p)
-
-        return encontrados
+        return {
+            "score": score,
+            "chance": chance,
+            "cidade": cidade
+        }
 
     except Exception as e:
         print("Erro IOEPA:", e)
-        return []
+        return None
 
 # ================= PNCP =================
 
 def buscar_pncp():
     print("🌎 Buscando PNCP...")
-    return 0
+    return 0  # depois evoluímos
 
 # ================= PREFEITURAS =================
 
@@ -65,28 +92,37 @@ def buscar_prefeituras():
 def montar_mensagem(ioepa, pncp, pref):
     agora = datetime.now(brasil).strftime("%d/%m/%Y %H:%M")
 
+    if ioepa:
+        cidade = ioepa["cidade"] if ioepa["cidade"] else "Não identificada"
+
+        inteligencia = f"""
+🧠 INTELIGÊNCIA DE MERCADO
+
+📍 Cidade: {cidade}
+📊 Score: {ioepa['score']}
+🚀 Chance: {ioepa['chance']}
+"""
+    else:
+        inteligencia = "❌ Nenhum dado relevante"
+
     msg = f"""
 📊 RELATÓRIO DE LICITAÇÕES
 
 🕒 {agora}
 
-🌐 IOEPA:
-{ "✅ Encontrado: " + ", ".join(ioepa) if ioepa else "❌ Nenhum resultado" }
+{inteligencia}
 
-🌎 PNCP:
-{pncp} oportunidades
-
-🏙️ Prefeituras:
-{len(pref)} oportunidades
+🌎 PNCP: {pncp}
+🏙️ Prefeituras: {len(pref)}
 
 🔍 Sistema ativo
 """
     return msg
 
-# ================= EXECUTAR =================
+# ================= EXECUÇÃO =================
 
 def executar():
-    print("🚀 Robô iniciado...")
+    print("🚀 Robô inteligente iniciado...")
 
     horarios_execucao = [8, 10, 13, 16, 17]
     horarios_executados = set()
@@ -98,9 +134,9 @@ def executar():
 
         horario_str = f"{hora}:{minuto}"
 
-        # roda apenas nos horários definidos (minuto 0)
         if hora in horarios_execucao and minuto == 0:
             if horario_str not in horarios_executados:
+
                 print(f"⏰ Executando {hora}:00")
 
                 ioepa = buscar_ioepa()
@@ -114,7 +150,6 @@ def executar():
 
                 horarios_executados.add(horario_str)
 
-        # limpa controle todo dia meia noite
         if hora == 0 and minuto == 0:
             horarios_executados.clear()
 
