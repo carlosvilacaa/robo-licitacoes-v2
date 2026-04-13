@@ -21,28 +21,40 @@ brasil = pytz.timezone("America/Sao_Paulo")
 def buscar_ioepa():
     print("🔎 Buscando IOEPA...")
 
-    url = "https://www.ioepa.com.br/pages/search"
-    resp = requests.get(url)
-    soup = BeautifulSoup(resp.text, "html.parser")
+    try:
+        url = "https://www.ioepa.com.br/pages/search"
+        resp = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-    textos = soup.get_text().lower()
+        textos = soup.get_text().lower()
 
-    palavras = ["asfalto", "pavimentação", "drenagem", "infraestrutura"]
+        palavras = [
+            "asfalto",
+            "pavimentação",
+            "drenagem",
+            "infraestrutura",
+            "recapeamento",
+            "tapa buraco"
+        ]
 
-    encontrados = []
-    for p in palavras:
-        if p in textos:
-            encontrados.append(p)
+        encontrados = []
+        for p in palavras:
+            if p in textos:
+                encontrados.append(p)
 
-    return encontrados
+        return encontrados
 
-# ================= PNCP (SIMPLES MOCK POR ENQUANTO) =================
+    except Exception as e:
+        print("Erro IOEPA:", e)
+        return []
+
+# ================= PNCP =================
 
 def buscar_pncp():
     print("🌎 Buscando PNCP...")
-    return 0  # depois melhoramos
+    return 0
 
-# ================= PREFEITURAS (SIMPLES MOCK) =================
+# ================= PREFEITURAS =================
 
 def buscar_prefeituras():
     print("🏙️ Buscando Prefeituras...")
@@ -79,19 +91,18 @@ def executar():
     while True:
         agora = datetime.now(brasil)
 
-        if agora.minute == 0:  # roda de hora em hora
-            print(f"⏰ Rodando {agora.hour}:00")
+        print(f"⏰ Rodando agora: {agora.strftime('%H:%M:%S')}")
 
-            ioepa = buscar_ioepa()
-            pncp = buscar_pncp()
-            pref = buscar_prefeituras()
+        ioepa = buscar_ioepa()
+        pncp = buscar_pncp()
+        pref = buscar_prefeituras()
 
-            msg = montar_mensagem(ioepa, pncp, pref)
-            enviar(msg)
+        msg = montar_mensagem(ioepa, pncp, pref)
+        enviar(msg)
 
-            time.sleep(60)
+        print("✅ Mensagem enviada\n")
 
-        time.sleep(10)
+        time.sleep(60)  # roda a cada 1 minuto
 
 # START
 executar()
