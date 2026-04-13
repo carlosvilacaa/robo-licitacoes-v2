@@ -16,24 +16,45 @@ def enviar(msg):
 # 🌎 HORÁRIO BRASIL
 brasil = pytz.timezone("America/Sao_Paulo")
 
-# ================= INTELIGÊNCIA =================
+# ================= RADAR COMPLETO =================
 
 def analisar_noticia(texto):
     texto = texto.lower()
     score = 0
 
+    # 🔥 OBRAS PESADAS
     if "pavimentação" in texto: score += 3
     if "asfalto" in texto: score += 3
-    if "drenagem" in texto: score += 3
-    if "infraestrutura" in texto: score += 2
     if "recapeamento" in texto: score += 3
-    if "licitação" in texto: score += 5
-    if "convênio" in texto: score += 2
+    if "tapa buraco" in texto: score += 2
 
+    # 🔥 BASE / PREPARAÇÃO
+    if "terraplanagem" in texto: score += 3
+    if "movimentação de terra" in texto: score += 3
+    if "regularização" in texto: score += 2
+    if "compactação" in texto: score += 2
+    if "topografia" in texto: score += 2
+
+    # 🔥 DRENAGEM
+    if "drenagem" in texto: score += 3
+    if "bueiro" in texto: score += 2
+    if "galeria" in texto: score += 2
+
+    # 🔥 GERAL
+    if "infraestrutura" in texto: score += 2
+    if "urbanização" in texto: score += 2
+
+    # 🔥 SINAIS DE LICITAÇÃO
+    if "licitação" in texto: score += 5
+    if "edital" in texto: score += 5
+    if "convênio" in texto: score += 2
+    if "contratação" in texto: score += 3
+
+    # 📍 CIDADES (expandível)
     cidades = [
-        "parauapebas", "marabá", "belém",
-        "altamira", "santarém", "redenção",
-        "castanhal", "ananindeua"
+        "parauapebas", "marabá", "belém", "altamira",
+        "santarém", "redenção", "castanhal", "ananindeua",
+        "itaituba", "tucuruí", "xinguara"
     ]
 
     cidade_detectada = None
@@ -43,12 +64,15 @@ def analisar_noticia(texto):
             score += 2
             cidade_detectada = c.title()
 
-    if score >= 8:
-        chance = "🔥 Alta"
+    # 🎯 CLASSIFICAÇÃO
+    if score >= 10:
+        chance = "🔥🔥 MUITO ALTA"
+    elif score >= 7:
+        chance = "🔥 ALTA"
     elif score >= 4:
-        chance = "⚠️ Média"
+        chance = "⚠️ MÉDIA"
     else:
-        chance = "Baixa"
+        chance = "🔎 BAIXA"
 
     return score, chance, cidade_detectada
 
@@ -61,6 +85,7 @@ def buscar_ioepa():
         soup = BeautifulSoup(resp.text, "html.parser")
 
         texto = soup.get_text().lower()
+
         score, chance, cidade = analisar_noticia(texto)
 
         return {
@@ -69,7 +94,8 @@ def buscar_ioepa():
             "cidade": cidade
         }
 
-    except:
+    except Exception as e:
+        print("Erro IOEPA:", e)
         return None
 
 # ================= PNCP =================
@@ -91,14 +117,14 @@ def montar_mensagem(ioepa, pncp, pref):
         cidade = ioepa["cidade"] if ioepa["cidade"] else "Não identificada"
 
         inteligencia = f"""
-🧠 INTELIGÊNCIA DE MERCADO
+🧠 RADAR DE OBRAS PÚBLICAS
 
 📍 Cidade: {cidade}
 📊 Score: {ioepa['score']}
 🚀 Chance: {ioepa['chance']}
 """
     else:
-        inteligencia = "❌ Nenhum dado relevante"
+        inteligencia = "❌ Nenhuma oportunidade detectada"
 
     return f"""
 📊 RELATÓRIO DE LICITAÇÕES
@@ -110,7 +136,7 @@ def montar_mensagem(ioepa, pncp, pref):
 🌎 PNCP: {pncp}
 🏙️ Prefeituras: {len(pref)}
 
-🔍 Sistema ativo
+🔍 Monitoramento ativo
 """
 
 # ================= RESUMO =================
@@ -120,9 +146,9 @@ def montar_resumo(ioepa):
         return "❌ Nenhuma oportunidade encontrada"
 
     return f"""
-📊 RESUMO DE OPORTUNIDADES
+📊 RESUMO RÁPIDO
 
-📍 Cidade: {ioepa['cidade']}
+📍 {ioepa['cidade']}
 🚀 Chance: {ioepa['chance']}
 📊 Score: {ioepa['score']}
 """
@@ -134,16 +160,16 @@ def montar_top(ioepa):
         return "❌ Sem dados suficientes"
 
     return f"""
-🏆 TOP OPORTUNIDADE
+🏆 MELHOR OPORTUNIDADE
 
 📍 {ioepa['cidade']}
 🚀 Chance: {ioepa['chance']}
 """
 
-# ================= LOOP AUTOMÁTICO =================
+# ================= LOOP =================
 
 def loop_principal():
-    print("🚀 Robô automático iniciado")
+    print("🚀 Radar de obras iniciado")
 
     horarios = [8, 10, 13, 16, 17]
     executados = set()
@@ -171,7 +197,7 @@ def loop_principal():
 
         time.sleep(30)
 
-# ================= COMANDOS TELEGRAM =================
+# ================= COMANDOS =================
 
 def escutar_comandos():
     print("📡 Escutando comandos...")
@@ -198,16 +224,13 @@ def escutar_comandos():
             if str(chat_id) != CHAT_ID:
                 continue
 
-            print(f"📩 Comando recebido: {texto}")
-
             ioepa = buscar_ioepa()
 
-            # 🔥 AQUI ESTÁ A MUDANÇA
             if texto in ["/teste", "/relat"]:
                 enviar(montar_mensagem(ioepa, 0, []))
 
             elif texto == "/status":
-                enviar("✅ Robô online e funcionando")
+                enviar("✅ Radar ativo e funcionando")
 
             elif texto == "/resumo":
                 enviar(montar_resumo(ioepa))
