@@ -3,10 +3,11 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 import pytz
 import time
+import threading
 
 # 🔐 TELEGRAM
-TOKEN = "8749489427:AAGph4ZejogI1viJZf29Q75f_33YOzVxSwM"
-CHAT_ID = "8373941356"
+TOKEN = "SEU_TOKEN_AQUI"
+CHAT_ID = "SEU_CHAT_ID_AQUI"
 
 def enviar(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -54,15 +55,12 @@ def analisar_noticia(texto):
 # ================= IOEPA =================
 
 def buscar_ioepa():
-    print("🔎 Buscando IOEPA...")
-
     try:
         url = "https://www.ioepa.com.br/pages/search"
         resp = requests.get(url, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
 
         texto = soup.get_text().lower()
-
         score, chance, cidade = analisar_noticia(texto)
 
         return {
@@ -71,20 +69,17 @@ def buscar_ioepa():
             "cidade": cidade
         }
 
-    except Exception as e:
-        print("Erro IOEPA:", e)
+    except:
         return None
 
 # ================= PNCP =================
 
 def buscar_pncp():
-    print("🌎 Buscando PNCP...")
-    return 0  # depois evoluímos
+    return 0
 
 # ================= PREFEITURAS =================
 
 def buscar_prefeituras():
-    print("🏙️ Buscando Prefeituras...")
     return []
 
 # ================= MENSAGEM =================
@@ -105,7 +100,7 @@ def montar_mensagem(ioepa, pncp, pref):
     else:
         inteligencia = "❌ Nenhum dado relevante"
 
-    msg = f"""
+    return f"""
 📊 RELATÓRIO DE LICITAÇÕES
 
 🕒 {agora}
@@ -117,43 +112,115 @@ def montar_mensagem(ioepa, pncp, pref):
 
 🔍 Sistema ativo
 """
-    return msg
+
+# ================= RESUMO =================
+
+def montar_resumo(ioepa):
+    if not ioepa:
+        return "❌ Nenhuma oportunidade encontrada"
+
+    return f"""
+📊 RESUMO DE OPORTUNIDADES
+
+📍 Cidade: {ioepa['cidade']}
+🚀 Chance: {ioepa['chance']}
+📊 Score: {ioepa['score']}
+"""
+
+# ================= TOP =================
+
+def montar_top(ioepa):
+    if not ioepa or not ioepa["cidade"]:
+        return "❌ Sem dados suficientes"
+
+    return f"""
+🏆 TOP OPORTUNIDADE
+
+📍 {ioepa['cidade']}
+🚀 Chance: {ioepa['chance']}
+"""
 
 # ================= EXECUÇÃO =================
 
-def executar():
-    print("🚀 Robô inteligente iniciado...")
+def loop_principal():
+    print("🚀 Robô automático iniciado")
 
-    horarios_execucao = [8, 10, 13, 16, 17]
-    horarios_executados = set()
+    horarios = [8, 10, 13, 16, 17]
+    executados = set()
 
     while True:
         agora = datetime.now(brasil)
         hora = agora.hour
         minuto = agora.minute
 
-        horario_str = f"{hora}:{minuto}"
+        key = f"{hora}:{minuto}"
 
-        if hora in horarios_execucao and minuto == 0:
-            if horario_str not in horarios_executados:
-
-                print(f"⏰ Executando {hora}:00")
+        if hora in horarios and minuto == 0:
+            if key not in executados:
 
                 ioepa = buscar_ioepa()
                 pncp = buscar_pncp()
                 pref = buscar_prefeituras()
 
-                msg = montar_mensagem(ioepa, pncp, pref)
-                enviar(msg)
+                enviar(montar_mensagem(ioepa, pncp, pref))
 
-                print("✅ Mensagem enviada\n")
-
-                horarios_executados.add(horario_str)
+                executados.add(key)
 
         if hora == 0 and minuto == 0:
-            horarios_executados.clear()
+            executados.clear()
 
         time.sleep(30)
 
-# START
-executar()
+# ================= COMANDOS TELEGRAM =================
+
+def escutar_comandos():
+    print("📡 Escutando comandos...")
+
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    offset = None
+
+    while True:
+        params = {"timeout": 100}
+        if offset:
+            params["offset"] = offset
+
+        resp = requests.get(url, params=params).json()
+
+        for update in resp.get("result", []):
+            offset = update["update_id"] + 1
+
+            try:
+                texto = update["message"]["text"]
+                chat_id = update["message"]["chat"]["id"]
+            except:
+                continue
+
+            if str(chat_id) != CHAT_ID:
+                continue
+
+            print(f"📩 Comando recebido: {texto}")
+
+            ioepa = buscar_ioepa()
+
+            if texto == "/teste":
+                enviar(montar_mensagem(ioepa, 0, []))
+
+            elif texto == "/status":
+                enviar("✅ Robô online e funcionando")
+
+            elif texto == "/resumo":
+                enviar(montar_resumo(ioepa))
+
+            elif texto == "/top":
+                enviar(montar_top(ioepa))
+
+# ================= START =================
+
+t1 = threading.Thread(target=loop_principal)
+t2 = threading.Thread(target=escutar_comandos)
+
+t1.start()
+t2.start()
+
+t1.join()
+t2.join()
