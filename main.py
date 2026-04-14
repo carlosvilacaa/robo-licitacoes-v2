@@ -1,9 +1,11 @@
 import requests
+import pdfplumber
 from bs4 import BeautifulSoup
 from datetime import datetime
 import pytz
 import time
 import threading
+import os
 
 # ================= TELEGRAM =================
 
@@ -16,100 +18,154 @@ def enviar(msg):
 
 brasil = pytz.timezone("America/Sao_Paulo")
 
-# ================= IOEPA =================
+# ================= PALAVRAS =================
 
-def buscar_ioepa():
-    try:
-        url = "https://www.ioepa.com.br"
-        resp = requests.get(url, timeout=10)
-        texto = resp.text.lower()
+PALAVRAS_OBRA = [
+    "pavimentação",
+    "asfalto",
+    "terraplanagem",
+    "drenagem",
+    "infraestrutura",
+    "recapeamento",
+    "obra",
+    "engenharia",
+    "galeria pluvial",
+    "rede de esgoto",
+    "urbanização",
+    "construção civil"
+]
 
-        palavras = [
-            "licitação",
-            "edital",
-            "pavimentação",
-            "asfalto",
-            "obra",
-            "infraestrutura"
-        ]
+PALAVRAS_LICITACAO = [
+    "licitação",
+    "edital",
+    "pregão",
+    "concorrência",
+    "contratação"
+]
 
-        encontrados = [p for p in palavras if p in texto]
-
-        return len(encontrados)
-
-    except Exception as e:
-        print("Erro IOEPA:", e)
-        return 0
-
-# ================= PNCP =================
-
-def buscar_pncp():
-    try:
-        url = "https://pncp.gov.br/app/editais?q=obra"
-        resp = requests.get(url, timeout=10)
-
-        if "obra" in resp.text.lower():
-            return 1
-        return 0
-
-    except Exception as e:
-        print("Erro PNCP:", e)
-        return 0
-
-# ================= PREFEITURAS =================
-
-def buscar_prefeituras():
-    try:
-        url = "https://www.google.com/search?q=licitação+prefeitura+obra"
-        resp = requests.get(url, timeout=10)
-
-        if "licitação" in resp.text.lower():
-            return 1
-        return 0
-
-    except Exception as e:
-        print("Erro Prefeituras:", e)
-        return 0
+PALAVRAS_EXCLUIR = [
+    "limpeza",
+    "fornecimento",
+    "locação",
+    "aluguel",
+    "material de expediente",
+    "serviço comum"
+]
 
 # ================= INTELIGÊNCIA =================
 
-def analisar_total(ioepa, pncp, pref):
-    score = ioepa * 2 + pncp * 3 + pref * 2
+def eh_obra_real(texto):
+    texto = texto.lower()
 
-    if score >= 5:
-        chance = "🔥 ALTA"
-    elif score >= 3:
-        chance = "⚠️ MÉDIA"
-    else:
-        chance = "🔎 BAIXA"
+    if any(p in texto for p in PALAVRAS_EXCLUIR):
+        return False
 
-    return score, chance
+    tem_licitacao = any(p in texto for p in PALAVRAS_LICITACAO)
+    tem_obra = any(p in texto for p in PALAVRAS_OBRA)
 
-# ================= RELATÓRIO =================
+    return tem_licitacao and tem_obra
+
+# ================= IOEPA PDF =================
+
+def buscar_ioepa_pdf():
+    try:
+        print("🔎 Buscando DOE...")
+
+        url = "https://www.ioepa.com.br/pages/diario"
+        resp = requests.get(url, timeout=10)
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        pdf_link = None
+
+        for a in soup.find_all("a"):
+            href = a.get("href", "")
+            if ".pdf" in href:
+                pdf_link = href
+                break
+
+        if not pdf_link:
+            print("❌ PDF não encontrado")
+            return []
+
+        if not pdf_link.startswith("http"):
+            pdf_link = "https://www.ioepa.com.br" + pdf_link
+
+        print("📄 PDF:", pdf_link)
+
+        pdf = requests.get(pdf_link, timeout=20)
+
+        with open("ioepa.pdf", "wb") as f:
+            f.write(pdf.content)
+
+        resultados = []
+
+        with pdfplumber.open("ioepa.pdf") as pdf:
+
+            encontrou_secao = False
+
+            for i, page in enumerate(pdf.pages):
+                texto = page.extract_text()
+
+                if not texto:
+                    continue
+
+                texto_lower = texto.lower()
+
+                # 🔥 detectar área de municípios/prefeituras
+                if (
+                    "município" in texto_lower or
+                    "municípios" in texto_lower or
+                    "prefeitura" in texto_lower
+                ):
+                    encontrou_secao = True
+
+                if not encontrou_secao:
+                    continue
+
+                # 🔥 aplicar inteligência de obra
+                if eh_obra_real(texto_lower):
+
+                    trecho = texto.replace("\n", " ")
+
+                    resultados.append({
+                        "pagina": i + 1,
+                        "trecho": trecho[:400]
+                    })
+
+        return resultados
+
+    except Exception as e:
+        print("Erro IOEPA:", e)
+        return []
+
+# ================= MENSAGEM =================
 
 def montar_relatorio():
     agora = datetime.now(brasil).strftime("%d/%m/%Y %H:%M")
 
-    ioepa = buscar_ioepa()
-    pncp = buscar_pncp()
-    pref = buscar_prefeituras()
+    resultados = buscar_ioepa_pdf()
 
-    score, chance = analisar_total(ioepa, pncp, pref)
-
-    msg = f"""📊 RELATÓRIO DE LICITAÇÕES
+    if not resultados:
+        return f"""📊 RELATÓRIO DOE (IOEPA)
 🕒 {agora}
 
-🧠 RADAR DE OBRAS PÚBLICAS
+❌ Nenhuma licitação de OBRA encontrada
+"""
 
-📍 Cidade: Monitoramento geral
-📊 Score: {score}
-🚀 Chance: {chance}
+    msg = f"""📊 RELATÓRIO DOE (IOEPA)
+🕒 {agora}
 
-🌎 PNCP: {pncp}
-🏛️ Prefeituras: {pref}
-📰 IOEPA: {ioepa}
+🔥 OBRAS ENCONTRADAS:
 
-🔎 Monitoramento ativo
+"""
+
+    for r in resultados[:3]:
+        msg += f"""📄 Página: {r['pagina']}
+📝 {r['trecho']}
+
+---------------------
+
 """
 
     return msg
@@ -117,7 +173,7 @@ def montar_relatorio():
 # ================= LOOP =================
 
 def loop():
-    print("🚀 Robô iniciado")
+    print("🚀 Robô DOE iniciado")
 
     horarios = [8, 10, 13, 16, 17]
 
@@ -127,8 +183,7 @@ def loop():
         if agora.hour in horarios and agora.minute == 0:
             print(f"⏰ Executando {agora.hour}:00")
 
-            msg = montar_relatorio()
-            enviar(msg)
+            enviar(montar_relatorio())
 
             time.sleep(60)
 
@@ -164,8 +219,8 @@ def comandos():
             if texto == "/relat":
                 enviar(montar_relatorio())
 
-            if texto == "/status":
-                enviar("✅ Robô online")
+            elif texto == "/status":
+                enviar("✅ Robô DOE ativo")
 
 # ================= START =================
 
