@@ -46,7 +46,7 @@ def eh_obra_real(texto):
 
     return tem_licitacao and tem_obra
 
-# ================= IOEPA PDF =================
+# ================= IOEPA PDF (AJUSTADO) =================
 
 def buscar_ioepa():
     try:
@@ -86,8 +86,10 @@ def buscar_ioepa():
 
                 texto_lower = texto.lower()
 
+                # 🔎 detectar município/prefeitura
                 if (
                     "município" in texto_lower or
+                    "municípios" in texto_lower or
                     "prefeitura" in texto_lower
                 ):
                     encontrou_secao = True
@@ -95,7 +97,11 @@ def buscar_ioepa():
                 if not encontrou_secao:
                     continue
 
-                if eh_obra_real(texto_lower):
+                # 🔥 NOVA REGRA ESPECÍFICA (SÓ ASFALTO/PAVIMENTAÇÃO)
+                if (
+                    "licitação" in texto_lower and
+                    ("asfalto" in texto_lower or "pavimentação" in texto_lower)
+                ):
                     resultados.append({
                         "pagina": i + 1,
                         "trecho": texto[:200]
@@ -176,7 +182,6 @@ def montar_relatorio():
 📰 IOEPA: {len(ioepa_resultados)}
 """
 
-    # detalhes IOEPA
     if ioepa_resultados:
         msg += "\n📄 DETALHES IOEPA:\n\n"
 
