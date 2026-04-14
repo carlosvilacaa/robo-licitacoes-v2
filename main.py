@@ -20,8 +20,8 @@ brasil = pytz.timezone("America/Sao_Paulo")
 # ================= PALAVRAS =================
 
 PALAVRAS_OBRA = [
-    "pavimentação","asfalto","terraplanagem","drenagem",
-    "infraestrutura","recapeamento","obra","engenharia"
+    "pavimentação","asfalto","recapeamento","terraplanagem",
+    "drenagem","infraestrutura","obra","engenharia"
 ]
 
 PALAVRAS_LICITACAO = [
@@ -74,21 +74,24 @@ def buscar_ioepa():
 
                 texto_lower = texto.lower()
 
-                # detectar municípios
                 if "município" in texto_lower or "prefeitura" in texto_lower:
                     encontrou_secao = True
 
                 if not encontrou_secao:
                     continue
 
-                # 🔥 divisão por blocos reais de licitação
+                # 🔥 BLOCO INTELIGENTE
                 blocos = texto_lower.split("aviso de licitação")
 
                 for bloco in blocos:
 
                     if (
                         "licitação" in bloco and
-                        ("pavimentação" in bloco or "asfalto" in bloco)
+                        (
+                            "pavimentação" in bloco or
+                            "asfalto" in bloco or
+                            "recapeamento" in bloco
+                        )
                     ):
                         resultados.append({
                             "pagina": i + 1,
