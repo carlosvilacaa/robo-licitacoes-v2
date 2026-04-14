@@ -1,197 +1,244 @@
 import requests
-from bs4 import BeautifulSoup
 import pdfplumber
-import re
+from bs4 import BeautifulSoup
 from datetime import datetime
+import pytz
+import time
+import threading
 
-# ================= CONFIG =================
+# ================= TELEGRAM =================
 
-PALAVRAS_OBRA = [
-    "pavimentação", "asfalto", "recapeamento",
-    "terraplanagem", "drenagem", "obra",
-    "infraestrutura", "engenharia", "construção"
-]
+TOKEN = "8749489427:AAGph4ZejogI1viJZf29Q75f_33YOzVxSwM"
+CHAT_ID = "8373941356"
 
-PALAVRAS_LICITACAO = [
-    "aviso de licitação",
-    "licitação",
-    "concorrência",
-    "tomada de preços",
-    "pregão"
-]
-
-# ==========================================
-
-def enviar_telegram(msg):
-    TOKEN = "8749489427:AAGph4ZejogI1viJZf29Q75f_33YOzVxSwM"
-    CHAT_ID = "8373941356"
-
+def enviar(msg):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
 
+brasil = pytz.timezone("America/Sao_Paulo")
 
-# ================= IOEPA =================
+# ================= PALAVRAS =================
 
-def buscar_pdf_ioepa():
-    url = "https://www.ioepa.com.br/portal/diario-oficial"
+PALAVRAS_OBRA = [
+    "pavimentação","asfalto","terraplanagem","drenagem",
+    "infraestrutura","recapeamento","obra","engenharia"
+]
 
-    r = requests.get(url)
-    soup = BeautifulSoup(r.text, "html.parser")
-
-    links = soup.find_all("a")
-
-    for link in links:
-        href = link.get("href")
-        if href and ".pdf" in href:
-            return href
-
-    return None
-
-
-def baixar_pdf(url):
-    nome = "doe.pdf"
-    r = requests.get(url)
-
-    with open(nome, "wb") as f:
-        f.write(r.content)
-
-    return nome
-
-
-def extrair_texto(pdf):
-    texto = ""
-
-    with pdfplumber.open(pdf) as pdf_file:
-        for page in pdf_file.pages:
-            try:
-                texto += page.extract_text() + "\n"
-            except:
-                pass
-
-    return texto.lower()
-
+PALAVRAS_LICITACAO = [
+    "licitação","edital","pregão","concorrência","contratação"
+]
 
 # ================= INTELIGÊNCIA =================
 
-def dividir_blocos(texto):
-    padrao = r"(aviso de licitação|licitação|pregão|concorrência)"
-    blocos = re.split(padrao, texto)
+def eh_obra_real(texto):
+    texto = texto.lower()
+    return any(p in texto for p in PALAVRAS_OBRA) and any(p in texto for p in PALAVRAS_LICITACAO)
 
-    blocos_formatados = []
-    for i in range(1, len(blocos), 2):
-        bloco = blocos[i] + blocos[i+1]
-        blocos_formatados.append(bloco)
+# ================= IOEPA INTELIGENTE =================
 
-    return blocos_formatados
+def buscar_ioepa():
+    try:
+        url = "https://www.ioepa.com.br/pages/diario"
+        resp = requests.get(url, timeout=10)
 
+        soup = BeautifulSoup(resp.text, "html.parser")
 
-def analisar_bloco(bloco):
-    score = 0
-    palavras_encontradas = []
+        pdf_link = None
+        for a in soup.find_all("a"):
+            href = a.get("href", "")
+            if ".pdf" in href:
+                pdf_link = href
+                break
 
-    for palavra in PALAVRAS_OBRA:
-        if palavra in bloco:
-            score += 2
-            palavras_encontradas.append(palavra)
+        if not pdf_link:
+            return []
 
-    cidade = "Não identificada"
+        if not pdf_link.startswith("http"):
+            pdf_link = "https://www.ioepa.com.br" + pdf_link
 
-    cidade_match = re.search(r"município de ([a-z\s]+)", bloco)
-    if cidade_match:
-        cidade = cidade_match.group(1).strip().title()
-        score += 2
+        pdf = requests.get(pdf_link, timeout=20)
 
-    trecho = bloco[:500]
+        with open("ioepa.pdf", "wb") as f:
+            f.write(pdf.content)
 
-    return {
-        "score": score,
-        "cidade": cidade,
-        "palavras": list(set(palavras_encontradas)),
-        "trecho": trecho
-    }
+        resultados = []
 
+        with pdfplumber.open("ioepa.pdf") as pdf:
 
-def classificar(score):
-    if score >= 6:
-        return "🔥 ALTA"
-    elif score >= 3:
-        return "⚠️ MÉDIA"
-    else:
-        return "🔍 BAIXA"
+            encontrou_secao = False
 
+            for i, page in enumerate(pdf.pages):
+                texto = page.extract_text()
+                if not texto:
+                    continue
 
-# ================= EXECUÇÃO =================
+                texto_lower = texto.lower()
 
-def executar_robo():
-    print("🔎 Buscando IOEPA...")
+                # detectar municípios
+                if "município" in texto_lower or "prefeitura" in texto_lower:
+                    encontrou_secao = True
 
-    pdf_url = buscar_pdf_ioepa()
+                if not encontrou_secao:
+                    continue
 
-    if not pdf_url:
-        return {
-            "total": 0,
-            "melhor": None
-        }
+                # 🔥 divisão por blocos reais de licitação
+                blocos = texto_lower.split("aviso de licitação")
 
-    pdf = baixar_pdf(pdf_url)
-    texto = extrair_texto(pdf)
+                for bloco in blocos:
 
-    blocos = dividir_blocos(texto)
+                    if (
+                        "licitação" in bloco and
+                        ("pavimentação" in bloco or "asfalto" in bloco)
+                    ):
+                        resultados.append({
+                            "pagina": i + 1,
+                            "trecho": bloco[:300]
+                        })
 
-    resultados = []
+        return resultados
 
-    for bloco in blocos:
-        resultado = analisar_bloco(bloco)
+    except Exception as e:
+        print("Erro IOEPA:", e)
+        return []
 
-        if resultado["score"] >= 3:
-            resultados.append(resultado)
+# ================= PNCP =================
 
-    if not resultados:
-        return {
-            "total": 0,
-            "melhor": None
-        }
+def buscar_pncp():
+    try:
+        url = "https://pncp.gov.br/app/editais?q=obra"
+        resp = requests.get(url, timeout=10)
 
-    melhor = max(resultados, key=lambda x: x["score"])
+        texto = resp.text.lower()
+        blocos = texto.split("edital")
 
-    return {
-        "total": len(resultados),
-        "melhor": melhor
-    }
+        total = 0
+        for bloco in blocos:
+            if eh_obra_real(bloco):
+                total += 1
 
+        return total
+
+    except:
+        return 0
+
+# ================= PREFEITURAS =================
+
+def buscar_prefeituras():
+    try:
+        url = "https://www.google.com/search?q=licitação+obra+prefeitura"
+        resp = requests.get(url, timeout=10)
+
+        texto = resp.text.lower()
+
+        if eh_obra_real(texto):
+            return 1
+
+        return 0
+
+    except:
+        return 0
 
 # ================= RELATÓRIO =================
 
-def gerar_relatorio_ioepa():
-    dados = executar_robo()
+def montar_relatorio():
+    agora = datetime.now(brasil).strftime("%d/%m/%Y %H:%M")
 
-    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    ioepa_resultados = buscar_ioepa()
+    pncp = buscar_pncp()
+    pref = buscar_prefeituras()
 
-    msg = f"📊 RELATÓRIO DE LICITAÇÕES\n"
-    msg += f"🕒 {agora}\n\n"
+    score = (len(ioepa_resultados)*3) + (pncp*4) + (pref*2)
 
-    msg += f"🧠 RADAR DE OBRAS PÚBLICAS\n\n"
-
-    if dados["melhor"]:
-        melhor = dados["melhor"]
-
-        msg += f"📍 Cidade: {melhor['cidade']}\n"
-        msg += f"📊 Score: {melhor['score']}\n"
-        msg += f"🚀 Chance: {classificar(melhor['score'])}\n\n"
-
-        msg += f"📌 Palavras: {', '.join(melhor['palavras'])}\n\n"
-        msg += f"📄 Trecho encontrado:\n{melhor['trecho'][:300]}...\n\n"
+    if score >= 6:
+        chance = "🔥 ALTA"
+    elif score >= 3:
+        chance = "⚠️ MÉDIA"
     else:
-        msg += f"❌ Nenhuma oportunidade relevante\n\n"
+        chance = "🔎 BAIXA"
 
-    msg += f"🏛️ IOEPA: {dados['total']}\n"
-    msg += f"🔎 Monitoramento ativo"
+    msg = f"""📊 RELATÓRIO DE LICITAÇÕES
+🕒 {agora}
+
+🧠 RADAR DE OBRAS PÚBLICAS
+
+📍 Cidade: Monitoramento geral
+📊 Score: {score}
+🚀 Chance: {chance}
+
+🌎 PNCP: {pncp}
+🏛️ Prefeituras: {pref}
+📰 IOEPA: {len(ioepa_resultados)}
+"""
+
+    if ioepa_resultados:
+        msg += "\n📄 DETALHES IOEPA:\n\n"
+
+        for r in ioepa_resultados[:2]:
+            msg += f"""📄 Página {r['pagina']}
+📝 {r['trecho']}
+
+"""
+
+    msg += "\n🔎 Monitoramento ativo"
 
     return msg
 
+# ================= LOOP =================
 
-# ================= TESTE =================
+def loop():
+    print("🚀 Robô iniciado")
 
-if __name__ == "__main__":
-    mensagem = gerar_relatorio_ioepa()
-    print(mensagem)
+    horarios = [8, 10, 13, 16, 17]
+
+    while True:
+        agora = datetime.now(brasil)
+
+        if agora.hour in horarios and agora.minute == 0:
+            enviar(montar_relatorio())
+            time.sleep(60)
+
+        time.sleep(30)
+
+# ================= COMANDOS =================
+
+def comandos():
+    print("📡 Escutando comandos...")
+
+    url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
+    offset = None
+
+    while True:
+        params = {"timeout": 100}
+        if offset:
+            params["offset"] = offset
+
+        resp = requests.get(url, params=params).json()
+
+        for update in resp.get("result", []):
+            offset = update["update_id"] + 1
+
+            try:
+                texto = update["message"]["text"]
+                chat_id = update["message"]["chat"]["id"]
+            except:
+                continue
+
+            if str(chat_id) != CHAT_ID:
+                continue
+
+            if texto == "/relat":
+                enviar(montar_relatorio())
+
+            elif texto == "/status":
+                enviar("✅ Robô online")
+
+# ================= START =================
+
+t1 = threading.Thread(target=loop)
+t2 = threading.Thread(target=comandos)
+
+t1.start()
+t2.start()
+
+t1.join()
+t2.join()
