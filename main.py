@@ -20,31 +20,17 @@ brasil = pytz.timezone("America/Sao_Paulo")
 # ================= PALAVRAS =================
 
 PALAVRAS_OBRA = [
-    "pavimentação",
-    "asfalto",
-    "terraplanagem",
-    "drenagem",
-    "infraestrutura",
-    "recapeamento",
-    "obra",
-    "engenharia",
-    "galeria",
-    "urbanização"
+    "pavimentação","asfalto","terraplanagem","drenagem",
+    "infraestrutura","recapeamento","obra","engenharia",
+    "galeria","urbanização"
 ]
 
 PALAVRAS_LICITACAO = [
-    "licitação",
-    "edital",
-    "pregão",
-    "concorrência",
-    "contratação"
+    "licitação","edital","pregão","concorrência","contratação"
 ]
 
 PALAVRAS_EXCLUIR = [
-    "limpeza",
-    "fornecimento",
-    "locação",
-    "aluguel"
+    "limpeza","fornecimento","locação","aluguel"
 ]
 
 # ================= INTELIGÊNCIA =================
@@ -70,7 +56,6 @@ def buscar_ioepa():
         soup = BeautifulSoup(resp.text, "html.parser")
 
         pdf_link = None
-
         for a in soup.find_all("a"):
             href = a.get("href", "")
             if ".pdf" in href:
@@ -96,7 +81,6 @@ def buscar_ioepa():
 
             for i, page in enumerate(pdf.pages):
                 texto = page.extract_text()
-
                 if not texto:
                     continue
 
@@ -104,7 +88,6 @@ def buscar_ioepa():
 
                 if (
                     "município" in texto_lower or
-                    "municípios" in texto_lower or
                     "prefeitura" in texto_lower
                 ):
                     encontrou_secao = True
@@ -115,7 +98,7 @@ def buscar_ioepa():
                 if eh_obra_real(texto_lower):
                     resultados.append({
                         "pagina": i + 1,
-                        "trecho": texto[:300]
+                        "trecho": texto[:200]
                     })
 
         return resultados
@@ -132,19 +115,16 @@ def buscar_pncp():
         resp = requests.get(url, timeout=10)
 
         texto = resp.text.lower()
-
         blocos = texto.split("edital")
 
         total = 0
-
         for bloco in blocos:
             if eh_obra_real(bloco):
                 total += 1
 
         return total
 
-    except Exception as e:
-        print("Erro PNCP:", e)
+    except:
         return 0
 
 # ================= PREFEITURAS =================
@@ -161,8 +141,7 @@ def buscar_prefeituras():
 
         return 0
 
-    except Exception as e:
-        print("Erro Prefeituras:", e)
+    except:
         return 0
 
 # ================= RELATÓRIO =================
@@ -174,7 +153,7 @@ def montar_relatorio():
     pncp = buscar_pncp()
     pref = buscar_prefeituras()
 
-    score = (len(ioepa_resultados) * 3) + (pncp * 4) + (pref * 2)
+    score = (len(ioepa_resultados)*3) + (pncp*4) + (pref*2)
 
     if score >= 6:
         chance = "🔥 ALTA"
@@ -186,33 +165,34 @@ def montar_relatorio():
     msg = f"""📊 RELATÓRIO DE LICITAÇÕES
 🕒 {agora}
 
+🧠 RADAR DE OBRAS PÚBLICAS
+
+📍 Cidade: Monitoramento geral
 📊 Score: {score}
 🚀 Chance: {chance}
 
 🌎 PNCP: {pncp}
 🏛️ Prefeituras: {pref}
 📰 IOEPA: {len(ioepa_resultados)}
-
 """
 
+    # detalhes IOEPA
     if ioepa_resultados:
-        msg += "🔥 IOEPA - DETALHES:\n\n"
+        msg += "\n📄 DETALHES IOEPA:\n\n"
 
-        for r in ioepa_resultados[:3]:
-            msg += f"""📄 Página: {r['pagina']}
-📝 {r['trecho'][:200]}
-
----------------------
+        for r in ioepa_resultados[:2]:
+            msg += f"""📄 Página {r['pagina']}
+📝 {r['trecho']}
 
 """
+
+    msg += "\n🔎 Monitoramento ativo"
 
     return msg
 
 # ================= LOOP =================
 
 def loop():
-    print("🚀 Robô híbrido iniciado")
-
     horarios = [8, 10, 13, 16, 17]
 
     while True:
@@ -253,7 +233,7 @@ def comandos():
                 enviar(montar_relatorio())
 
             elif texto == "/status":
-                enviar("✅ Robô híbrido online")
+                enviar("✅ Robô online")
 
 # ================= START =================
 
